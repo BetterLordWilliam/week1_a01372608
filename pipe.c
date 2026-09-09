@@ -19,12 +19,14 @@ enum { WORK_ITERATIONS = 20 };
 
 static volatile sig_atomic_t parent_result_ready = 0;
 
+/* silence `gcc` unused function compiler warning
 static int todo(const char *step)
 {
     fprintf(stderr, "TODO: %s\n", step);
     errno = ENOSYS;
     return -1;
 }
+*/
 
 static void sleep_for_work_pacing(void)
 {
@@ -41,7 +43,8 @@ static void sleep_for_work_pacing(void)
 static void parent_handle_ready(int signal_number)
 {
     // TODO 1: Set parent_result_ready. Do not call printf(), read(), or close().
-	parent_result_ready = 1;
+	// parent_result_ready = 1;
+	parent_result_ready = signal_number;
 }
 
 static int install_handler(int signal_number, void (*handler)(int), int restart)
@@ -80,13 +83,13 @@ static int read_exact(int fd, void *buffer, size_t length)
     // Treat early EOF as an error and retry when errno == EINTR.
     unsigned char *bytes = buffer;
     size_t off = 0;
-    while ( off < len ) {
-	    ssize_t n = read(fd, bytes + off, len - off); // signed because results may be negative
+    while ( off < length ) {
+	    ssize_t n = read(fd, bytes + off, length - off); // signed because results may be negative
 	    if ( n > 0 ) {
 		    off += (size_t)n;	// casting to unsigned
-	    } else if ( n == 0 ) {	// 0 now meaninf EOF
+	    } else if ( n == 0 ) {	// when an early EOF is encountered
 		    return -1;
-	    } else {
+	    } else if (errno != EINTR) {
 		    return -1;
 	    }
     }
@@ -98,13 +101,13 @@ static void child_work(int result_write_fd)
     struct pipe_result result = {0, 0};
 
     for (unsigned long iteration = 1; iteration <= WORK_ITERATIONS; iteration++) {
-        // TODO 4: Update result.iterations and add iteration to result.sum.
+        // DONE ~~TODO~~ 4: Update result.iterations and add iteration to result.sum.
 	result.iterations = iteration;
 	result.sum += iteration;
         sleep_for_work_pacing();
     }
 
-    // TODO 5:
+    // DONE ~~TODO~~ 5:
     // Publish the completed result to the parent, then notify the parent.
     // After the notification, release the pipe descriptor and exit normally.
     // 
@@ -114,17 +117,21 @@ static void child_work(int result_write_fd)
     // - Use a nonzero child exit status if an operation fails.
     // - Close the child's write end before exiting.
     
-    write_all(result_write_fd, &result, sizeof(result));
-    
-    if (close(result_write_fd) < 0) {
-	    perror("[Child] ");
-            _exit(999);
+    if (write_all(result_write_fd, &result, sizeof(result)) == -1) {
+	    perror("[Child] `write_all` call errored");
+	    _exit(127);
+    }
+    if (kill(getppid(), SIGUSR1) == -1) {
+	    perror("[Child] child process termination");
+	    _exit(127);
+    }
+    if (close(result_write_fd) == -1) {
+	    perror("[Child] child process failed to close write pipe");
+            _exit(127);
     }
 
-    if (kill(getppid(), SIGUSR1) < 0) {
-	    perror("[Child] child process termination");
-	    _exit(999);
-    }
+    // artificial delay to ensure that the handler in the loop works
+    sleep_for_work_pacing();
 
     _exit(0);
 }
@@ -154,7 +161,7 @@ int main(void)
         close(result_pipe[0]);
         close(result_pipe[1]);
         return 2;
-    }
+    } 
 
     const pid_t pid = fork();
     if (pid < 0) {
@@ -170,10 +177,9 @@ int main(void)
         // Close the unused read end and check close(). Keep the write end open.
 	if (close(result_pipe[0]) == -1) {
 		perror("[Child] failed to close the pipe read file descriptor");
-		_exit(999);
+		_exit(127);
 	}
         child_work(result_pipe[1]);
-        _exit(127);
     }
 
     // DONE ~~TODO~~ 7:
@@ -202,11 +208,26 @@ int main(void)
         }
 
         if (waited == -1 && errno == EINTR) {
-            // TODO 8: When parent_result_ready is set:
+            // DONE ~~TODO~~ 8: When parent_result_ready is set:
             // - read_exact() one struct pipe_result from result_pipe[0]
             // - set result_received and notification_reported
             // - clear parent_result_ready
             // - print the SIGUSR1/EINTR checkpoint
+	    //
+	    if (parent_result_ready == SIGUSR1) {
+		    if (result_received == 0) {
+			    if (read_exact(result_pipe[0],
+					&result,
+					sizeof(result)) == -1) {
+				    perror("[Parent] `read_exact` operation failed");
+				    return 5;
+			    }
+			    result_received = 1;
+		    }
+		    notification_reported = 1;
+		    parent_result_ready = 0;
+		    printf("[Parent] SIGUSR1/EINTR checkpoint\n");
+	    }
             continue;
         }
 
@@ -216,10 +237,25 @@ int main(void)
         }
     }
 
-    // TODO 9:
+    // DONE ~~TODO~~ 9:
     // The child may signal and exit before the parent processes the notification.
     // Then waitpid() can return the child PID, so the TODO 8 EINTR branch is skipped.
     // After the loop, handle any unread result and unreported notification once.
+    if (result_received == 0) {
+	    if (read_exact(result_pipe[0],
+			&result,
+			sizeof(result)) == -1) {
+		    perror("[Parent] `read_exact` operation failed");
+		    return 6;
+	    }
+	    result_received = 1;
+	    printf("[Parent] handling unread result\n");
+    }
+
+    if (parent_result_ready == SIGUSR1) {
+	    notification_reported = 1;
+	    parent_result_ready = 0;
+    }
 
     if (observed_child_exit) {
         report_child_status(status);
@@ -228,7 +264,7 @@ int main(void)
     // The Parent owns only the read end here. The write end was closed above.
     if (close(result_pipe[0]) == -1) {
         perror("[Parent] close read end");
-        return 6;
+        return 7;
     }
 
     const int status_ok = observed_child_exit &&
