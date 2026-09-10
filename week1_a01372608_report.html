@@ -1,0 +1,79 @@
+<h1 id="comp7005-week-1-lab-report">COMP7005 Week 1 Lab Report</h1>
+<p>Will Otterbein, A01372608</p>
+<h2 id="results">Results</h2>
+<p>Here are the results of executing the compiled <code>pipe</code> binary:
+<img src="./screenshots/res.png" alt="results" /></p>
+<h2 id="todo-1">TODO 1</h2>
+<p><strong>parent_handle_ready</strong> implementation</p>
+<p><img src="./screenshots/todo1.png" alt="todo1" /></p>
+<ul>
+<li>In this snippet, simple we are setting the <code>parent_result_ready</code> flag to have the value of whatever signal is incoming (in our case this will be <code>SIGUSR1</code>)</li>
+<li><code>parent_result_ready</code> as per the template code is a <code>volatile</code> variable of the <code>sig_atomic_t</code> type</li>
+</ul>
+<h2 id="todo-2">TODO 2</h2>
+<p><strong>write_all</strong> implementation</p>
+<p><img src="./screenshots/todo2.png" alt="todo2" /></p>
+<ul>
+<li>As per the example implementation, this function creates an unsigned char pointer <code>bytes</code> and an offset tracker of type <code>size_t</code> named <code>off</code></li>
+<li>the function loops on the condition that the value of <code>off</code> (which is a byte offset) is less than the length of the input buffer (named <code>buffer</code>)</li>
+<li>for each iteration, the <code>write</code> syscall is attempted, starting from the <code>bytes</code> pointer plus whatever the offset is currently, and for a length that is the entire buffers length minus the offset (ie. the remaining memory segment)</li>
+<li>if write succeeds (<code>n &gt; 0</code>) then we increment the offset &amp; loop (if the entire segment wasn't written then we will write the remainder)</li>
+<li>additionally, if there is an error (<code>n == -1</code>) but <code>errno</code> is <code>EINTR</code> we continue, otherwise the function returns w/ an error value of -1</li>
+<li>successful return value is 0</li>
+</ul>
+<h2 id="todo-3">TODO 3</h2>
+<p><strong>read_exact</strong> implementation</p>
+<p><img src="./screenshots/todo3.png" alt="todo3" /></p>
+<ul>
+<li>As per the example implementation, this function creates an unsigned char pointer <code>bytes</code> to the buffer and an offset tracker of type <code>size_t</code> named <code>off</code></li>
+<li>the function loops on the condition that the value of the offset tracker <code>off</code> is less than the length of the input buffer (named <code>buffer</code>)</li>
+<li>for each iteration the <code>read</code> syscall is attempted, starting from the <code>bytes</code> pointer plus whatever the offset is currently, and for a length that is the entire buffers length minus the offset (ie. the remaining memory segment)</li>
+<li>if the read succeeds (<code>n &gt; 0</code>) then we increment the offset &amp; loop (if the entire segment wasn't read then we will read the remainder)</li>
+<li>if there was an error executing read that does not have <code>errno</code> equalling <code>EINTR</code>, or EOF is encountered early, we return <code>-1</code> error value</li>
+</ul>
+<h2 id="todo-4">TODO 4</h2>
+<p><strong>child_work</strong> result struct field population</p>
+<p><img src="./screenshots/todo4.png" alt="todo4" /></p>
+<ul>
+<li>this is the implementation of the child's work, which is tracking the current iteration number and then incrementing the counter with the value of the iteration</li>
+</ul>
+<h2 id="todo-5">TODO 5</h2>
+<p><strong>child_work</strong> result struct write to pipe, send signal to parent, close write file descriptor</p>
+<p><img src="./screenshots/todo5.png" alt="todo5" /></p>
+<ul>
+<li>after the snippet from todo4 run populating the fields of the <code>result</code> struct (<code>pipe_result_type</code>), we invoke the <code>write_all</code> function previously described, we give the <code>result_write_fd</code> as the file descriptor (if this call fails returning <code>-1</code>, we log this error and exit w/ a non-zero exit code).</li>
+<li>after writing the result struct to the pipe, we then use the <code>kill</code> syscall to send the <code>SIGNUSR1</code> signal to the parent process. It this syscall fails, we log an error and exit w/ a non-zero exit code. We get the parent's PID using the <code>getppid</code> syscall (as per <code>man 2 getppid</code> there is no need to handle syscall errors for this syscall, because it always succeeds).</li>
+<li>then we make our final syscall in this method, which is <code>close</code> on the <code>result_write_fd</code> file descriptor, checking for errors &amp; reporting them as well as exiting w/ non-zero exit code.</li>
+</ul>
+<blockquote>
+<p>for this TODO, I added a sleep after closing the file descriptor &amp; sending the signal to test that the logic in the loop &amp; the outer logic were both accomplishing the same thing, I found without this delay the child process would always exit before the signal was processed in the main loop</p>
+</blockquote>
+<h2 id="todo-6">TODO 6</h2>
+<p><img src="./screenshots/todo6.png" alt="todo6" /></p>
+<ul>
+<li>if the return value of <code>fork</code> is the value 0 this means that the execution context is that of the child process, and so this todo snippet in <code>main</code> is responsible for closing the <code>result_pipe</code> read file descriptor (index 0) of the pair of file descriptors returned by the <code>pipe</code> syscall earlier in the template code. The child process only needs to write data to the <code>result_pipe</code></li>
+<li>we also invoke <code>child_work</code> with the <code>result_pipe</code> write file descriptor (index 1 of the pair returned by the earlier <code>pipe</code> syscall)</li>
+</ul>
+<h2 id="todo-7">TODO 7</h2>
+<p><img src="./screenshots/todo7.png" alt="todo7" /></p>
+<ul>
+<li>proceeding with the parent process executing context in <code>main</code>, we are closing the write pair of the <code>result_pipe</code> file descriptors (index 1), as the parent process does not need to write any data to the pipe (<code>close</code> syscall)</li>
+<li>we handle the error state of the <code>close</code> syscall (checking if the return of this is <code>-1</code>)</li>
+</ul>
+<h2 id="todo-8">TODO 8</h2>
+<p><img src="./screenshots/todo8.png" alt="todo8" /></p>
+<ul>
+<li>now we are in the &quot;main&quot; loop of the <code>main</code> method, where the parent process is waiting for the child process</li>
+<li>herein the implementation is under the <code>if (waited == -1 &amp;&amp; errno == EINTR)</code> condition, meaning that <code>waitpid</code> syscall is waiting still for the child process and that the syscall was interrupted by a signal</li>
+<li>then we check the flag <code>parent_result_ready</code> equals are expected signal of <code>SIGUSR1</code>, if this is true we also check that <code>result_received</code> is 0, then we execute our implementation of <code>read_exact</code> into the target struct named <code>result</code>, checking for the error return value of <code>-1</code> (if there is an error, we log this and return from the program)</li>
+<li>if <code>read_exact</code> executes successfully, then we set <code>result_received</code> to 1.</li>
+<li>regardless of whatever happens with read, we set <code>notification_reported</code> to 1 inside the if block checking the signal to record that the notification was reported (we write a checkpoint message via <code>printf</code> as well) and reset <code>parent_result_ready</code> to 0</li>
+</ul>
+<h2 id="todo-9">TODO 9</h2>
+<p><img src="./screenshots/todo9.png" alt="todo9" /></p>
+<ul>
+<li>Finally we check both flags after the &quot;main&quot; loop, in the case that the child process exits before the signal is processed by the condition in the earlier loop</li>
+<li>if <code>result_received</code> is still zero, then we execute the read operation (with error handling the same as before, an argument is to be made that I should have created a function for this), we set <code>result_received</code> to 1 indicating now that we have received the results from the pipe &amp; wrote them into the <code>result</code> struct</li>
+<li>also the program checks that the <code>parent_result_ready</code> flag has the value of the <code>SIGUSR1</code> signal &amp; sets <code>notification_reported</code> to 1 &amp; clears the <code>parent_result_ready</code> flag (sets it to zero)</li>
+</ul>
+
