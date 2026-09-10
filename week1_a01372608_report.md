@@ -24,7 +24,7 @@ Here are the results of executing the compiled `pipe` binary:
 - As per the example implementation, this function creates an unsigned char pointer `bytes` and an offset tracker of type `size_t` named `off`
 - the function loops on the condition that the value of `off` (which is a byte offset) is less than the length of the input buffer (named `buffer`)
 - for each iteration, the `write` syscall is attempted, starting from the `bytes` pointer plus whatever the offset is currently, and for a length that is the entire buffers length minus the offset (ie. the remaining memory segment)
-- if write succeeeds (`n > 0`) then we increment the offset & loop (if the entire segment wasn't written then we will write the remainder)
+- if write succeeds (`n > 0`) then we increment the offset & loop (if the entire segment wasn't written then we will write the remainder)
 - additionally, if there is an error (`n == -1`) but `errno` is `EINTR` we continue, otherwise the function returns w/ an error value of -1
 - successful return value is 0
 
@@ -45,7 +45,7 @@ Here are the results of executing the compiled `pipe` binary:
 **child_work** result struct field population
 
 ![todo4](./screenshots/todo4.png)
-- this is the implementation of the childs work, which is tracking the current iteration number and then incrementing the counter with the value of the iteration
+- this is the implementation of the child's work, which is tracking the current iteration number and then incrementing the counter with the value of the iteration
 
 ## TODO 5
 
@@ -72,13 +72,13 @@ Here are the results of executing the compiled `pipe` binary:
 ![todo8](./screenshots/todo8.png)
 - now we are in the "main" loop of the `main` method, where the parent process is waiting for the child process
 - herein the implementation is under the `if (waited == -1 && errno == EINTR)` condition, meaning that `waitpid` syscall is waiting still for the child process and that the syscall was interrupted by a signal
-- then we check the flag `parent_result_ready` equals are expected signal of `SIGUSR1`, if this is true we also check that `result_received` is 0, then we execute our implementation of `read_eexact` into the target struct named `result`, checking for the error return value of `-1` (if there is an error, we log this and return from the program)
+- then we check the flag `parent_result_ready` equals are expected signal of `SIGUSR1`, if this is true we also check that `result_received` is 0, then we execute our implementation of `read_exact` into the target struct named `result`, checking for the error return value of `-1` (if there is an error, we log this and return from the program)
 - if `read_exact` executes successfully, then we set `result_received` to 1.
 - regardless of whatever happens with read, we set `notification_reported` to 1 inside the if block checking the signal to record that the notification was reported (we write a checkpoint message via `printf` as well) and reset `parent_result_ready` to 0
 
 ## TODO 9
 ![todo9](./screenshots/todo9.png)
 - Finally we check both flags after the "main" loop, in the case that the child process exits before the signal is processed by the condition in the earlier loop
-- if `result_recieved` is still zero, then we execute the read operation (with error handling the same as before, an argument is to be made that I should have created a function for this), we set `result_recieved` to 1 indicating now that we have received the results from the pipe & wrote them into the `result` struct
+- if `result_received` is still zero, then we execute the read operation (with error handling the same as before, an argument is to be made that I should have created a function for this), we set `result_received` to 1 indicating now that we have received the results from the pipe & wrote them into the `result` struct
 - also the program checks that the `parent_result_ready` flag has the value of the `SIGUSR1` signal & sets `notification_reported` to 1 & clears the `parent_result_ready` flag (sets it to zero)
 
