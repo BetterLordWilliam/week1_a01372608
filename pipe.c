@@ -44,7 +44,8 @@ static void parent_handle_ready(int signal_number)
 {
     // TODO 1: Set parent_result_ready. Do not call printf(), read(), or close().
 	// parent_result_ready = 1;
-	parent_result_ready = signal_number;
+    (void)signal_number;
+	parent_result_ready = 1;
 }
 
 static int install_handler(int signal_number, void (*handler)(int), int restart)
@@ -214,7 +215,7 @@ int main(void)
             // - clear parent_result_ready
             // - print the SIGUSR1/EINTR checkpoint
 	    //
-	    if (parent_result_ready == SIGUSR1) {
+	    if (parent_result_ready == 1) {
 		    if (result_received == 0) {
 			    if (read_exact(result_pipe[0],
 					&result,
@@ -252,7 +253,7 @@ int main(void)
 	    printf("[Parent] handling unread result\n");
     }
 
-    if (parent_result_ready == SIGUSR1) {
+    if (parent_result_ready == 1) {
 	    notification_reported = 1;
 	    parent_result_ready = 0;
     }
